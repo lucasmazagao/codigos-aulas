@@ -18,6 +18,7 @@ int main() {
                 int x;
                 scanf("%d", &x);
                 int resultado = lse_insere_final(lista, x);
+                
                 if (resultado == 1) { // sucesso
                     printf("1\n");
                 } else { // falha
