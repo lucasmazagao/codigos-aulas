@@ -1,58 +1,61 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "stack.h"
+#include "queue.h"
 
-int main() {
-    Stack *pilha1 = create_stack();
-    Stack *pilha2 = create_stack();
-    if (!pilha1 || !pilha2) {
+int main(void)
+{
+    Queue *q1 = create_queue();
+    Queue *q2 = create_queue();
+
+    if (!q1 || !q2) {
+        free_queue(&q1);
+        free_queue(&q2);
         return 1;
     }
+
     int comando;
-    while (1) {
-        scanf("%d", &comando);
-        switch (comando) {
-            case 0: {
-                free_stack(&pilha1);
-                free_stack(&pilha2);
-                return 0;
+
+    while (scanf("%d", &comando) == 1) {
+        if (comando == 0) {
+            break;
+        }
+
+        if (comando == 1) {
+            int x;
+            if (scanf("%d", &x) == 1) {
+                enqueue(q1, x);
             }
-            case 1: {
-                int x;
-                scanf("%d", &x);
-                push(pilha1, x);
-                break;
+
+        } else if (comando == 2) {
+            int x;
+            if (scanf("%d", &x) == 1) {
+                enqueue(q2, x);
             }
-            case 2: {
-                int x;
-                scanf("%d", &x);
-                push(pilha2, x);
-                break;
+
+        } else if (comando == 3) {
+            int v;
+
+            if (dequeue(q2, &v) == 1) {
+                printf("%d\n", v);
+            } else if (dequeue(q1, &v) == 1) {
+                printf("%d\n", v);
             }
-            case 3: {
-                int removido;
-                if (pop(pilha2, &removido) == 1) {
-                    printf("%d\n", removido);
-                } else if (pop(pilha1, &removido) == 1) {
-                    printf("%d\n", removido);
-                }
-                if (pop(pilha2, &removido) == 1) {
-                    printf("%d\n", removido);
-                } else if (pop(pilha1, &removido) == 1) {
-                    printf("%d\n", removido);
-                }
-                if (pop(pilha1, &removido) == 1) {
-                    printf("%d\n", removido);
-                } else if (pop(pilha2, &removido) == 1) {
-                    printf("%d\n", removido);
-                }
-                break;
+
+            if (dequeue(q2, &v) == 1) {
+                printf("%d\n", v);
+            } else if (dequeue(q1, &v) == 1) {
+                printf("%d\n", v);
             }
-            default:
-                break;
+
+            if (dequeue(q1, &v) == 1) {
+                printf("%d\n", v);
+            } else if (dequeue(q2, &v) == 1) {
+                printf("%d\n", v);
+            }
         }
     }
-    free_stack(&pilha1);
-    free_stack(&pilha2);
+
+    free_queue(&q1);
+    free_queue(&q2);
     return 0;
 }
