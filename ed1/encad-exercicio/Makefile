@@ -1,10 +1,10 @@
-# Makefile para compilar main.c e queue.c
+# Makefile para compilar main.c e LinkedList.c
 CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic
 LDFLAGS :=
 LDLIBS :=
 TARGET := main
-OBJS := main.o queue.o
+OBJS := main.o LinkedList.o
 
 .PHONY: all clean run
 
@@ -13,8 +13,8 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
 
-# Regras de compilação (main.c e queue.c dependem de queue.h)
-%.o: %.c queue.h
+# Regras de compilação (main.c e LinkedList.c dependem de LinkedList.h)
+%.o: %.c LinkedList.h
 	$(CC) $(CFLAGS) -c $<
 
 run: $(TARGET)

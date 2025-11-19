@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "string.h": "c",
-        "lse.h": "c"
+        "lse.h": "c",
+        "stack": "c"
     }
 }

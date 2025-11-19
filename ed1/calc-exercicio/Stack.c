@@ -1,5 +1,5 @@
 #include <stdlib.h>  // para usar malloc
-#include "stack.h"
+#include "Stack.h"
 
 #define MAX 100  // capacidade (espaço) da pilha
 
