@@ -2,231 +2,280 @@
 #include <stdlib.h>
 #include <string.h>
 #include "BigInt.h"
+#include "LinkedList.h"
+
+// Usamos base 10^4: cada bloco guarda até 4 dígitos decimais (0 a 9999)
+// Isso facilita multiplicação/divisão futuras e evita overflow rápido
+#define BASE 10000
+#define DIGITOS_POR_BLOCO 4
 
 struct BigInt {
-    int len;
-    int cap;
-    char sinal;
-    char *digitos;
+    LinkedList *blocos_digitos;  // Lista encadeada de blocos (cada nó = até 4 dígitos)
+    int sinal;                   // 1 = positivo, -1 = negativo
 };
 
-BigInt *criar(int digitos) {
-    BigInt *novo = (BigInt *)malloc(sizeof(BigInt));
-    if (!novo) {
+// Funções auxiliares privadas (usadas internamente para operações)
+int comparar_magnitude(const BigInt *primeiro, const BigInt *segundo);
+BigInt *somar_magnitude(const BigInt *primeiro, const BigInt *segundo);
+BigInt *subtrair_magnitude(const BigInt *numero_maior, const BigInt *numero_menor);
+
+// criar: aloca memória e inicializa um BigInt vazio
+BigInt *criar(int capacidade_digitos) {
+    // Nota: capacidade_digitos é ignorado (lista cresce dinamicamente),
+    // mas mantemos o parâmetro para compatibilidade com a interface
+    (void)capacidade_digitos;  // Evita warning de parâmetro não usado
+    
+    BigInt *novo_numero = (BigInt *)malloc(sizeof(BigInt));
+    if (!novo_numero) return NULL;
+    
+    novo_numero->blocos_digitos = create_linked_list();
+    if (!novo_numero->blocos_digitos) {
+        free(novo_numero);
         return NULL;
     }
     
-    novo->cap = digitos;
-    novo->len = 0;
-    novo->sinal = 1;
-    
-    novo->digitos = (char *)calloc(digitos, sizeof(char));
-    if (!novo->digitos) {
-        free(novo);
-        return NULL;
-    }
-    
-    return novo;
+    novo_numero->sinal = 1;  // Positivo por padrão
+    return novo_numero;
 }
 
-int definir(BigInt *n, const char *decimal) {
-    if (!n || !decimal) {
-        return 0;
+// definir: converte uma string decimal para BigInt
+// Ex: "123456789" vira blocos [6789], [2345], [1] (da direita pra esquerda)
+int definir(BigInt *numero, const char *texto_decimal) {
+    if (!numero || !texto_decimal) return 0;
+    
+    // Limpa a lista atual (se já tinha algum número armazenado)
+    while (!is_empty_list(numero->blocos_digitos)) {
+        remove_node(numero->blocos_digitos, 0, NULL);
     }
-    
-    int inicio = 0;
-    int tam = strlen(decimal);
-    
-    if (decimal[0] == '-') {
-        n->sinal = -1;
-        inicio = 1;
-    } else if (decimal[0] == '+') {
-        n->sinal = 1;
-        inicio = 1;
+
+    int tamanho_texto = strlen(texto_decimal);
+    int posicao_inicio = 0;
+
+    // Detecta e processa o sinal (+ ou -)
+    if (texto_decimal[0] == '-') {
+        numero->sinal = -1;
+        posicao_inicio = 1;
+    } else if (texto_decimal[0] == '+') {
+        numero->sinal = 1;
+        posicao_inicio = 1;
     } else {
-        n->sinal = 1;
+        numero->sinal = 1;
     }
-    
-    while (inicio < tam && decimal[inicio] == '0') {
-        inicio++;
-    }
-    
-    if (inicio == tam) {
-        n->len = 1;
-        n->digitos[0] = 0;
-        n->sinal = 1;
-        return 1;
-    }
-    
-    int num_digitos = tam - inicio;
-    
-    if (num_digitos > n->cap) {
-        return 0;
-    }
-    
-    n->len = num_digitos;
-    for (int i = 0; i < num_digitos; i++) {
-        char c = decimal[tam - 1 - i];
-        if (c < '0' || c > '9') {
-            return 0;
+
+    // Lê a string da DIREITA para ESQUERDA em blocos de até 4 dígitos
+    // Exemplo: "123456789" → blocos [6789], [2345], [1]
+    int posicao_fim = tamanho_texto;
+    while (posicao_fim > posicao_inicio) {
+        int inicio_bloco = posicao_fim - DIGITOS_POR_BLOCO;
+        if (inicio_bloco < posicao_inicio) {
+            inicio_bloco = posicao_inicio;
         }
-        n->digitos[i] = c - '0';
+
+        // Extrai o pedaço da string e converte para inteiro
+        char buffer_bloco[DIGITOS_POR_BLOCO + 1];
+        int indice_buffer = 0;
+        for (int i = inicio_bloco; i < posicao_fim; i++) {
+            buffer_bloco[indice_buffer++] = texto_decimal[i];
+        }
+        buffer_bloco[indice_buffer] = '\0';
+
+        int valor_bloco = atoi(buffer_bloco);
+        
+        // Insere no final da lista (ordem: menos significativo → mais significativo)
+        insert_node(numero->blocos_digitos, size_list(numero->blocos_digitos), valor_bloco);
+
+        posicao_fim = inicio_bloco;
     }
     
+    // Se a string estava vazia (ou só tinha sinal), representa como zero
+    if (is_empty_list(numero->blocos_digitos)) {
+        insert_node(numero->blocos_digitos, 0, 0);
+    }
+
     return 1;
 }
 
-int maior(const BigInt *a, const BigInt *b) {
-    if (!a || !b) {
-        return 0;
-    }
-    
-    if (a->sinal > b->sinal) {
-        return 1;
-    }
-    if (a->sinal < b->sinal) {
-        return -1;
-    }
-    
-    int resultado_comparacao;
-    
-    if (a->len > b->len) {
-        resultado_comparacao = 1;
-    } else if (a->len < b->len) {
-        resultado_comparacao = -1;
-    } else {
-        resultado_comparacao = 0;
-        for (int i = a->len - 1; i >= 0; i--) {
-            if (a->digitos[i] > b->digitos[i]) {
-                resultado_comparacao = 1;
-                break;
-            } else if (a->digitos[i] < b->digitos[i]) {
-                resultado_comparacao = -1;
-                break;
-            }
-        }
-    }
-    
-    if (a->sinal == -1) {
-        resultado_comparacao = -resultado_comparacao;
-    }
-    
-    return resultado_comparacao;
-}
+// soma: calcula primeiro + segundo, tratando sinais positivos e negativos
+BigInt *soma(const BigInt *primeiro, const BigInt *segundo) {
+    if (!primeiro || !segundo) return NULL;
 
-int menor(const BigInt *a, const BigInt *b) {
-    return -maior(a, b);
-}
+    BigInt *resultado = NULL;
 
-BigInt *soma(const BigInt *a, const BigInt *b) {
-    if (!a || !b) {
-        return NULL;
-    }
-    
-    int tamanho_max = (a->len > b->len ? a->len : b->len) + 1;
-    BigInt *resultado = criar(tamanho_max);
-    if (!resultado) {
-        return NULL;
-    }
-    
-    if (a->sinal == b->sinal) {
-        int carry = 0;
-        int i;
-        
-        for (i = 0; i < tamanho_max; i++) {
-            int digito_a = (i < a->len) ? a->digitos[i] : 0;
-            int digito_b = (i < b->len) ? b->digitos[i] : 0;
-            
-            int soma_parcial = digito_a + digito_b + carry;
-            resultado->digitos[i] = soma_parcial % 10;
-            carry = soma_parcial / 10;
-        }
-        
-        resultado->len = tamanho_max;
-        while (resultado->len > 1 && resultado->digitos[resultado->len - 1] == 0) {
-            resultado->len--;
-        }
-        
-        resultado->sinal = a->sinal;
-    }
+    // Caso 1: Ambos têm o mesmo sinal → soma as magnitudes e mantém o sinal
+    // Ex: (+5) + (+3) = +8  ou  (-5) + (-3) = -8
+    if (primeiro->sinal == segundo->sinal) {
+        resultado = somar_magnitude(primeiro, segundo);
+        resultado->sinal = primeiro->sinal;
+    } 
+    // Caso 2: Sinais opostos → subtrai o menor do maior (em valor absoluto)
+    // Ex: (+5) + (-3) = +2  ou  (-5) + (+3) = -2
     else {
-        const BigInt *maior_abs, *menor_abs;
-        
-        int comparacao = maior(a, b);
-        if (a->sinal == 1) {
-            if (a->len > b->len || (a->len == b->len && comparacao >= 0)) {
-                maior_abs = a;
-                menor_abs = b;
-                resultado->sinal = 1;
-            } else {
-                maior_abs = b;
-                menor_abs = a;
-                resultado->sinal = -1;
-            }
+        int comparacao = comparar_magnitude(primeiro, segundo);
+        if (comparacao >= 0) { 
+            // |primeiro| >= |segundo| → resultado mantém o sinal do primeiro
+            resultado = subtrair_magnitude(primeiro, segundo);
+            resultado->sinal = primeiro->sinal;
         } else {
-            if (b->len > a->len || (b->len == a->len && comparacao <= 0)) {
-                maior_abs = b;
-                menor_abs = a;
-                resultado->sinal = 1;
-            } else {
-                maior_abs = a;
-                menor_abs = b;
-                resultado->sinal = -1;
-            }
-        }
-        
-        int emprestimo = 0;
-        for (int i = 0; i < maior_abs->len; i++) {
-            int digito_maior = maior_abs->digitos[i];
-            int digito_menor = (i < menor_abs->len) ? menor_abs->digitos[i] : 0;
-            
-            int diferenca = digito_maior - digito_menor - emprestimo;
-            if (diferenca < 0) {
-                diferenca += 10;
-                emprestimo = 1;
-            } else {
-                emprestimo = 0;
-            }
-            
-            resultado->digitos[i] = diferenca;
-        }
-        
-        resultado->len = maior_abs->len;
-        while (resultado->len > 1 && resultado->digitos[resultado->len - 1] == 0) {
-            resultado->len--;
-        }
-        
-        if (resultado->len == 1 && resultado->digitos[0] == 0) {
-            resultado->sinal = 1;
+            // |segundo| > |primeiro| → resultado mantém o sinal do segundo
+            resultado = subtrair_magnitude(segundo, primeiro);
+            resultado->sinal = segundo->sinal;
         }
     }
-    
     return resultado;
 }
 
-void destruir(BigInt **n) {
-    if (n && *n) {
-        if ((*n)->digitos) {
-            free((*n)->digitos);
+// somar_magnitude: soma os valores absolutos (ignora sinal)
+BigInt *somar_magnitude(const BigInt *primeiro, const BigInt *segundo) {
+    BigInt *resultado = criar(0);
+    int quantidade_blocos_primeiro = size_list(primeiro->blocos_digitos);
+    int quantidade_blocos_segundo = size_list(segundo->blocos_digitos);
+    int quantidade_maxima_blocos = (quantidade_blocos_primeiro > quantidade_blocos_segundo) 
+                                    ? quantidade_blocos_primeiro : quantidade_blocos_segundo;
+    int carry = 0;  // Carry (transporte para próximo bloco)
+
+    // Percorre todos os blocos, somando e propagando o carry
+    for (int i = 0; i < quantidade_maxima_blocos || carry > 0; i++) {
+        int valor_bloco_primeiro = 0;
+        int valor_bloco_segundo = 0;
+
+        if (i < quantidade_blocos_primeiro) {
+            get_node(primeiro->blocos_digitos, i, &valor_bloco_primeiro);
         }
+        if (i < quantidade_blocos_segundo) {
+            get_node(segundo->blocos_digitos, i, &valor_bloco_segundo);
+        }
+
+        int soma_blocos = valor_bloco_primeiro + valor_bloco_segundo + carry;
+        insert_node(resultado->blocos_digitos, size_list(resultado->blocos_digitos), soma_blocos % BASE);
+        carry = soma_blocos / BASE;
+    }
+    return resultado;
+}
+
+// subtrair_magnitude: subtrai os valores absolutos (assume que numero_maior >= numero_menor)
+// Usa algoritmo de subtração com "empresta um" (borrow)
+BigInt *subtrair_magnitude(const BigInt *numero_maior, const BigInt *numero_menor) {
+    BigInt *resultado = criar(0);
+    int quantidade_blocos_maior = size_list(numero_maior->blocos_digitos);
+    int quantidade_blocos_menor = size_list(numero_menor->blocos_digitos);
+    int empresta_um = 0;  // Borrow (empréstimo do próximo bloco)
+
+    // Percorre todos os blocos do número maior, subtraindo e propagando empréstimos
+    for (int i = 0; i < quantidade_blocos_maior; i++) {
+        int valor_bloco_maior = 0;
+        int valor_bloco_menor = 0;
+
+        get_node(numero_maior->blocos_digitos, i, &valor_bloco_maior);
+        if (i < quantidade_blocos_menor) {
+            get_node(numero_menor->blocos_digitos, i, &valor_bloco_menor);
+        }
+
+        int diferenca = valor_bloco_maior - valor_bloco_menor - empresta_um;
+        if (diferenca < 0) {
+            diferenca += BASE;  // Pega emprestado do próximo bloco
+            empresta_um = 1;
+        } else {
+            empresta_um = 0;
+        }
+
+        insert_node(resultado->blocos_digitos, size_list(resultado->blocos_digitos), diferenca);
+    }
+
+    // Remove zeros à esquerda (que são zeros à direita na nossa lista)
+    // Exemplo: 001000 vira 1000, mas mantém pelo menos um zero se resultado é 0
+    int quantidade_blocos_resultado = size_list(resultado->blocos_digitos);
+    while (quantidade_blocos_resultado > 1) {
+        int valor_bloco = 0;
+        get_node(resultado->blocos_digitos, quantidade_blocos_resultado - 1, &valor_bloco);
+        if (valor_bloco == 0) {
+            remove_node(resultado->blocos_digitos, quantidade_blocos_resultado - 1, NULL);
+            quantidade_blocos_resultado--;
+        } else {
+            break;
+        }
+    }
+    return resultado;
+}
+
+// comparar_magnitude: Retorna 1 se |a|>|b|, -1 se |a|<|b|, 0 se iguais
+int comparar_magnitude(const BigInt *primeiro, const BigInt *segundo) {
+    int qtd_prim = size_list(primeiro->blocos_digitos);
+    int qtd_seg = size_list(segundo->blocos_digitos);
+
+    if (qtd_prim > qtd_seg) return 1;
+    if (qtd_prim < qtd_seg) return -1;
+
+    for (int i = qtd_prim - 1; i >= 0; i--) {
+        int val1, val2;
+        get_node(primeiro->blocos_digitos, i, &val1);
+        get_node(segundo->blocos_digitos, i, &val2);
         
-        free(*n);
-        
-        *n = NULL;
+        if (val1 > val2) return 1;
+        if (val1 < val2) return -1;
+    }
+    return 0;
+}
+
+// maior: Retorna 1 se a > b, 0 se a == b, -1 se a < b
+int maior(const BigInt *primeiro, const BigInt *segundo) {
+    // 1. Comparação de Sinais
+    if (primeiro->sinal > segundo->sinal) return 1;  // + > -
+    if (primeiro->sinal < segundo->sinal) return -1; // - < +
+    
+    // 2. Sinais iguais: compara magnitude
+    int comp = comparar_magnitude(primeiro, segundo);
+    
+    // 3. Ajusta pelo sinal
+    if (primeiro->sinal == 1) {
+        return comp; // Positivos: maior magnitude = maior número
+    } else {
+        return -comp; // Negativos: maior magnitude = menor número (ex: -5 < -2)
     }
 }
 
-void imprimir(const BigInt *n) {
-    if (!n) {
+// menor: Retorna 1 se a < b, 0 se a == b, -1 se a > b
+int menor(const BigInt *primeiro, const BigInt *segundo) {
+    // Inverte o resultado de maior
+    return -maior(primeiro, segundo);
+}
+
+// destruir: libera toda a memória alocada e zera o ponteiro
+void destruir(BigInt **ponteiro_numero) {
+    if (ponteiro_numero && *ponteiro_numero) {
+        free_linked_list(&((*ponteiro_numero)->blocos_digitos));
+        free(*ponteiro_numero);
+        *ponteiro_numero = NULL;
+    }
+}
+
+//mostra BigInt na saída padrão (formato decimal)
+void imprimir(const BigInt *numero) {
+    if (!numero) {
         printf("NULL");
         return;
     }
     
-    if (n->sinal == -1 && !(n->len == 1 && n->digitos[0] == 0)) {
+    //verifica se é zero para não imprimir -0
+    int quantidade_blocos = size_list(numero->blocos_digitos);
+    int valor_bloco_mais_significativo;
+    get_node(numero->blocos_digitos, quantidade_blocos - 1, &valor_bloco_mais_significativo);
+
+    // Imprime sinal negativo se necessário
+    if (numero->sinal == -1 && !(quantidade_blocos == 1 && valor_bloco_mais_significativo == 0)) {
         printf("-");
     }
     
-    for (int i = n->len - 1; i >= 0; i--) {
-        printf("%d", n->digitos[i]);
+    // Imprime os blocos do mais significativo (fim da lista) ao inicio
+    for (int i = quantidade_blocos - 1; i >= 0; i--) {
+        int valor_bloco;
+        get_node(numero->blocos_digitos, i, &valor_bloco);
+        
+        if (i == quantidade_blocos - 1) {
+            // Primeiro bloco: imprime sem zeros à esquerda (ex: 123, não 0123)
+            printf("%d", valor_bloco);
+        } else {
+            // Blocos seguintes: preenche com zeros à esquerda (ex: 0005)
+            printf("%04d", valor_bloco);
+        }
     }
 }
